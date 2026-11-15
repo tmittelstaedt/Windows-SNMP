@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoke-SnmpV2Get.ps1 — Documentation</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #1e293b;
+      --muted: #475569;
+      --border: #e2e8f0;
+      --accent: #2563eb;
+      --code-bg: #0f172a;
+      --code-text: #f8fafc;
+      --note-bg: #eff6ff;
+      --note-border: #3b82f6;
+      --warn-bg: #fffbeb;
+      --warn-border: #f59e0b;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--surface);
+      padding: 2.5rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.9rem;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.75rem;
+    }
+    h2 {
+      margin-top: 2rem;
+      font-size: 1.35rem;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+    h3 {
+      margin-top: 1.5rem;
+      font-size: 1.1rem;
+    }
+    p {
+      margin: 0.75rem 0;
+    }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #f1f5f9;
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: #0f172a;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 1rem 1.25rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    .callout {
+      padding: 1rem 1.25rem;
+      border-left: 4px solid var(--note-border);
+      background: var(--note-bg);
+      border-radius: 4px;
+      margin: 1.25rem 0;
+    }
+    .callout.warn {
+      border-left-color: var(--warn-border);
+      background: var(--warn-bg);
+    }
+    .callout strong {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+    }
+    th {
+      background: #f1f5f9;
+      font-weight: 600;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Invoke-SnmpV2Get.ps1</h1>
+    <p>
+      A pure PowerShell implementation of an <strong>SNMPv2c GET</strong> client using native .NET sockets
+      (<code>System.Net.Sockets.UdpClient</code>) and custom ASN.1 BER encoding/decoding. It requires zero third-party
+      modules, external binaries, or compiled DLLs—avoiding Windows Smart App Control and WDAC code-signing blocks.
+    </p>
+
+    <h2>1. Prerequisites &amp; Loading Into Your Session</h2>
+    <p>
+      Before calling <code>Invoke-SnmpV2Get</code>, you must address two PowerShell session requirements:
+      <strong>Execution Policy</strong> and <strong>Dot-Sourcing</strong>.
+    </p>
+
+    <h3>Step A: Allow Script Execution in the Current Session</h3>
+    <p>
+      Windows clients default to the <code>Restricted</code> execution policy, which prevents <code>.ps1</code> files from loading.
+      Run the following command to bypass the policy for your <strong>current PowerShell window only</strong> (this automatically
+      resets when you close the terminal):
+    </p>
+    <pre><code>Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force</code></pre>
+
+    <h3>Step B: Dot-Source the Script File</h3>
+    <p>
+      Because <code>Invoke-SnmpV2Get.ps1</code> defines reusable functions (<code>Invoke-SnmpV2Get</code> and
+      <code>Parse-SnmpResponse</code>) rather than executing directly, you must <strong>dot-source</strong> the script
+      using a leading period and space (<code>. </code>) so the functions stay loaded in your active session scope:
+    </p>
+    <pre><code>. C:\scripts\Invoke-SnmpV2Get.ps1</code></pre>
+
+    <div class="callout warn">
+      <strong>Common Mistake: Running Without Dot-Sourcing</strong>
+      Running <code>.\Invoke-SnmpV2Get.ps1</code> without the leading <code>. </code> executes the file inside a temporary
+      child scope and immediately discards the functions when the script exits, resulting in a <em>"term is not recognized"</em> error.
+    </div>
+
+    <h3>Required .NET Assemblies</h3>
+    <p>
+      All required classes (<code>System.Net.Sockets.UdpClient</code>, <code>System.Net.IPEndPoint</code>,
+      <code>System.Text.Encoding</code>, and <code>System.Collections.Generic.List&lt;byte&gt;</code>) are built into
+      standard Windows PowerShell 5.1 and PowerShell 7+. No <code>Add-Type</code> or module imports are needed.
+    </p>
+
+    <h2>2. Parameters</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Default</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>-TargetIP</code></td>
+          <td><code>[string]</code></td>
+          <td>Yes</td>
+          <td>—</td>
+          <td>IPv4 address of the target SNMP agent (e.g., <code>"172.16.1.2"</code>).</td>
+        </tr>
+        <tr>
+          <td><code>-OID</code></td>
+          <td><code>[string]</code></td>
+          <td>Yes</td>
+          <td>—</td>
+          <td>Numeric Object Identifier to query (leading dot optional, e.g., <code>"1.3.6.1.2.1.1.5.0"</code>).</td>
+        </tr>
+        <tr>
+          <td><code>-Community</code></td>
+          <td><code>[string]</code></td>
+          <td>No</td>
+          <td><code>"public"</code></td>
+          <td>SNMPv2c read-only community string.</td>
+        </tr>
+        <tr>
+          <td><code>-Port</code></td>
+          <td><code>[int]</code></td>
+          <td>No</td>
+          <td><code>161</code></td>
+          <td>Target UDP port for SNMP queries.</td>
+        </tr>
+        <tr>
+          <td><code>-TimeoutMs</code></td>
+          <td><code>[int]</code></td>
+          <td>No</td>
+          <td><code>3000</code></td>
+          <td>UDP socket receive timeout in milliseconds.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>3. Usage Examples</h2>
+
+    <h3>Single OID Query</h3>
+    <pre><code>$Result = Invoke-SnmpV2Get -TargetIP "172.16.1.2" -Community "public" -OID "1.3.6.1.2.1.1.5.0"
+$Result</code></pre>
+
+    <h3>Multi-OID Query Loop (System Information)</h3>
+    <p>
+      Query multiple standard MIB-2 variables (<code>sysName</code>, <code>sysDescr</code>, and <code>sysUpTime</code>)
+      and format the results into a clean PowerShell table:
+    </p>
+    <pre><code># 1. Prepare session and dot-source the script
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+. C:\scripts\Invoke-SnmpV2Get.ps1
+
+# 2. Define target OIDs
+$Oids = @{
+    "sysName"   = "1.3.6.1.2.1.1.5.0"
+    "sysDescr"  = "1.3.6.1.2.1.1.1.0"
+    "sysUpTime" = "1.3.6.1.2.1.1.3.0"
+}
+
+# 3. Query each OID and output structured objects
+foreach ($Name in $Oids.Keys) {
+    $Result = Invoke-SnmpV2Get -TargetIP "172.16.1.2" -Community "public" -OID $Oids[$Name]
+    [PSCustomObject]@{
+        Variable = $Name
+        OID      = $Result.OID
+        Type     = $Result.Type
+        Value    = $Result.Value
+    }
+}</code></pre>
+
+    <h4>Sample Output</h4>
+    <pre><code>Variable  OID               Type Value
+--------  ---               ---- -----
+sysDescr  1.3.6.1.2.1.1.1.0 0x04 GS724TS
+sysUpTime 1.3.6.1.2.1.1.3.0 0x43 6.00:15:48
+sysName   1.3.6.1.2.1.1.5.0 0x04 switch.example.com</code></pre>
+
+    <h2>4. Supported ASN.1 / SNMP Data Types</h2>
+    <p>The built-in <code>Parse-SnmpResponse</code> decoder automatically translates the following BER tags:</p>
+    <table>
+      <thead>
+        <tr>
+          <th>BER Tag</th>
+          <th>SNMP Type</th>
+          <th>PowerShell Output Format</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0x02</code></td>
+          <td>INTEGER</td>
+          <td><code>[int64]</code></td>
+        </tr>
+        <tr>
+          <td><code>0x04</code></td>
+          <td>OCTET STRING</td>
+          <td><code>[string]</code> (ASCII decoded)</td>
+        </tr>
+        <tr>
+          <td><code>0x05</code></td>
+          <td>NULL</td>
+          <td><code>"NULL"</code></td>
+        </tr>
+        <tr>
+          <td><code>0x40</code></td>
+          <td>IpAddress</td>
+          <td>Dotted-quad <code>[string]</code> (e.g., <code>172.16.1.2</code>)</td>
+        </tr>
+        <tr>
+          <td><code>0x41</code></td>
+          <td>Counter32</td>
+          <td><code>[uint64]</code></td>
+        </tr>
+        <tr>
+          <td><code>0x42</code></td>
+          <td>Gauge32</td>
+          <td><code>[uint64]</code></td>
+        </tr>
+        <tr>
+          <td><code>0x43</code></td>
+          <td>TimeTicks</td>
+          <td>Formatted <code>[TimeSpan]</code> string (<code>d.hh:mm:ss</code>)</td>
+        </tr>
+        <tr>
+          <td><code>0x46</code></td>
+          <td>Counter64</td>
+          <td><code>[uint64]</code></td>
+        </tr>
+        <tr>
+          <td><code>0x80</code> / <code>0x81</code></td>
+          <td>NoSuchObject / NoSuchInstance</td>
+          <td>Descriptive status string</td>
+        </tr>
+        <tr>
+          <td><em>Other</em></td>
+          <td>Unhandled Tag</td>
+          <td><code>Raw Hex (Tag 0xXX): AA-BB-...</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>Note on Agent Compatibility</strong>
+      This script uses strict ASN.1 Tag-Length-Value (TLV) structure walking rather than byte-pattern scanning, ensuring
+      reliable parsing regardless of community string length or payload contents.
+    </div>
+  </div>
+
+    <div style="font-size: 0.85em; color: #555; margin-top: 30px; border-top: 1px solid #ccc; padding-top: 10px;">
+        <strong>Author:</strong> Created by Ted Mittelstaedt, and the free AI's on the Internet on 11/15/2026, during the "Hour of the Wolf" for my own amusement.<br><br>
+        
+        <strong>Copyright:</strong> &copy; 2026 Ted Mittelstaedt  
+        All rights reserved. This document and the associated script(s) is the intellectual property of Ted Mittelstaedt  
+        Unauthorized reproduction, distribution, or modification without prior written consent is prohibited, except as expressly permitted under the license terms below.<br><br>
+        
+        <strong>License:</strong> This work is licensed under the Berkeley Software Distribution (BSD) 3-Clause License:<br><br>
+        <pre style="white-space: pre-wrap; background-color: #f9f9f9; color: #1e293b; border: 1px solid #ccc; padding: 10px; font-size: 0.85em;">
+BSD 3-Clause License
+
+Copyright (c) 2026, Ted Mittelstaedt
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+    </pre>
+</div>
+
+</body>
+</html>
+
