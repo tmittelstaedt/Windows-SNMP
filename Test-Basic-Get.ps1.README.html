@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="US-ASCII">
+<title>SNMP Printer Connectivity Test README</title>
+<style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }
+    h1, h2 { color: #2c3e50; }
+    code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 3px; }
+    pre { background-color: #f4f4f4; padding: 10px; border-radius: 5px; }
+    .note { background-color: #fff3cd; padding: 10px; border-left: 5px solid #ffcc00; }
+    .warning { background-color: #f8d7da; padding: 10px; border-left: 5px solid #ff0000; }
+</style>
+</head>
+<body>
+
+<h1>SNMP Printer Connectivity Test Script</h1>
+
+<p>This PowerShell script uses the legacy <code>olePrn.OleSNMP</code> COM object to test SNMP connectivity to a printer.
+It queries standard SNMP OIDs to confirm that SNMP is enabled and responding on the target device.</p>
+
+<h2>Purpose</h2>
+<ul>
+    <li>Quickly verify SNMP connectivity to a printer.</li>
+    <li>Retrieve basic device information such as sysName and sysDescr.</li>
+    <li>Confirm that SNMPv1 is working on the destination printer.</li>
+</ul>
+
+<h2>Important Notes</h2>
+<div class="note">
+    <p>The <code>olePrn.OleSNMP</code> COM object only supports SNMPv1-style queries.
+    The third parameter in <code>.Open()</code> is labeled as "version", but:</p>
+    <ul>
+        <li><code>1</code> = SNMPv1</li>
+        <li><code>2</code> = Extended timeout handling, NOT true SNMPv2c</li>
+    </ul>
+    <p>It does not implement SNMPv2c features such as bulk get or 64-bit counters.</p>
+</div>
+
+<div class="warning">
+    <p>This COM object is legacy and may not be available on all Windows systems.
+    It is primarily designed for printer SNMP queries and is not really intended for general SNMP device management.</p>
+</div>
+
+<h2>Default Settings</h2>
+<ul>
+    <li>Default IP Address: <code>172.16.3.252</code></li>
+    <li>Default Community String: <code>public</code></li>
+    <li>Default Timeout: <code>1000 ms</code></li>
+    <li>SNMP Version Parameter: <code>1</code> (SNMPv1)</li>
+</ul>
+
+<h2>Queried OIDs</h2>
+<table border="1" cellpadding="5" cellspacing="0">
+    <tr>
+        <th>OID</th>
+        <th>Name</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td>.1.3.6.1.2.1.1.5.0</td>
+        <td>sysName</td>
+        <td>Device name or hostname.</td>
+    </tr>
+    <tr>
+        <td>.1.3.6.1.2.1.1.1.0</td>
+        <td>sysDescr</td>
+        <td>Device description, often includes model and firmware version.</td>
+    </tr>
+</table>
+
+<h2>Example Usage</h2>
+<pre>
+.\Test-Basic-Get.ps1
+</pre>
+<p>Or specify a different printer:</p>
+<pre>
+.\Test-Basic-Get.ps1 -IPAddress "172.16.15.235" -Community "public"
+</pre>
+
+<h2>Example Output</h2>
+<pre>
+SNMPv1 PASS on 172.16.3.252
+OIDName  OID                     Value
+-------  ---                     -----
+sysName  .1.3.6.1.2.1.1.5.0      HP-LaserJet-Printer
+sysDescr .1.3.6.1.2.1.1.1.0      HP LaserJet MFP M426fdw, Firmware 2023.10.15
+</pre>
+
+<h2>Summary</h2>
+<p>This script is ideal for quick SNMPv1 printer connectivity checks.
+If you need true SNMPv2c or SNMPv3 testing, use Net-SNMP tools (snmpget, snmpwalk) or a modern SNMP library such as SharpSnmpLib, or the other SNMP PowerShell scripts in this repo.</p>
+
+    <div style="font-size: 0.85em; color: #555; margin-top: 30px; border-top: 1px solid #ccc; padding-top: 10px;">
+        <strong>Author:</strong> Created by Ted Mittelstaedt, CODA's IT Director, and the free AI's on the Internet on 11/15/2026, during the "Hour of the Wolf" as part of CODA Inc.'s internal IT Automation project.<br><br>
+        
+        <strong>Copyright:</strong> &copy; 2026 Ted Mittelstaedt and CODA Inc.  
+        All rights reserved. This document and the associated script(s) are the intellectual property of Ted Mittelstaedt and CODA Inc.  
+        Unauthorized reproduction, distribution, or modification without prior written consent is prohibited, except as expressly permitted under the license terms below.<br><br>
+        
+        <strong>License:</strong> This work is licensed under the Berkeley Software Distribution (BSD) 3-Clause License:<br><br>
+        <pre style="white-space: pre-wrap; background-color: #f9f9f9; color: #1e293b; border: 1px solid #ccc; padding: 10px; font-size: 0.85em;">
+BSD 3-Clause License
+
+Copyright (c) 2026, Ted Mittelstaedt and CODA Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+    </pre>
+</div>
+
+
+</body>
+</html>
