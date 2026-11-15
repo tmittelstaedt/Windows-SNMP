@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoke-SnmpV3Walk.ps1 — Pure-PowerShell SNMPv3 Subtree Walker</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #1e293b;
+      --muted: #475569;
+      --border: #e2e8f0;
+      --accent: #2563eb;
+      --code-bg: #0f172a;
+      --code-text: #f8fafc;
+      --note-bg: #eff6ff;
+      --note-border: #3b82f6;
+      --warn-bg: #fffbeb;
+      --warn-border: #f59e0b;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--surface);
+      padding: 2.5rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.85rem;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.75rem;
+    }
+    h2 {
+      margin-top: 2rem;
+      font-size: 1.35rem;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+    h3 {
+      margin-top: 1.5rem;
+      font-size: 1.1rem;
+    }
+    p {
+      margin: 0.75rem 0;
+    }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #f1f5f9;
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: #0f172a;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 1rem 1.25rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.85rem;
+      line-height: 1.45;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    .callout {
+      padding: 1rem 1.25rem;
+      border-left: 4px solid var(--note-border);
+      background: var(--note-bg);
+      border-radius: 4px;
+      margin: 1.25rem 0;
+    }
+    .callout.warn {
+      border-left-color: var(--warn-border);
+      background: var(--warn-bg);
+    }
+    .callout strong {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+    }
+    th {
+      background: #f1f5f9;
+      font-weight: 600;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+    }
+    li {
+      margin: 0.4rem 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Invoke-SnmpV3Walk.ps1</h1>
+    <p>
+      A standalone, zero-dependency <strong>SNMPv3 MIB Subtree Walker</strong> written in pure PowerShell. It discovers
+      the target agent's <code>EngineID</code>, <code>EngineBoots</code>, and <code>EngineTime</code> once up front,
+      derives localized RFC 3414 / RFC 7860 keys (<code>MD5</code>, <code>SHA1</code>, <code>SHA256</code>,
+      <code>SHA384</code>, <code>SHA512</code>), and walks an entire OID subtree via iterative <code>GetNextRequest</code>
+      PDUs with optional RFC 3826 payload encryption (<code>AES-128-CFB128</code> or <code>DES-CBC</code>) and automatic
+      UDP retry recovery.
+    </p>
+
+    <h2>1. Key Features &amp; Advantages Over Windows Net-SNMP Binaries</h2>
+    <ul>
+      <li><strong>No External Executables or Code-Signing Hurdles:</strong> Avoids deploying outdated third-party Windows Net-SNMP builds or obtaining code-signing certificates for custom-compiled binaries in environments guarded by AppLocker or Windows Defender Application Control.</li>
+      <li><strong>Native SHA-2 Support (<code>SHA2-256</code> / <code>SHA2-384</code> / <code>SHA2-512</code>):</strong> Default Windows Net-SNMP builds compiled without external OpenSSL libraries omit SHA-2 authentication protocols. <code>Invoke-SnmpV3Walk.ps1</code> leverages the built-in .NET cryptographic provider so full <code>SHA2-512</code> + <code>AES-128</code> encryption works natively on Windows Server 2019+ and Windows 10/11.</li>
+      <li><strong>Automatic Clock Synchronization &amp; UDP Retry Resilience:</strong> Synchronizes <code>EngineBoots</code> and <code>EngineTime</code> from every agent response to prevent AES-CFB IV drift during long walks, and includes a 3-attempt UDP retry loop to recover seamlessly from momentary packet drops on embedded printer NICs.</li>
+      <li><strong>Smart Value Decoding:</strong> Automatically formats dotted <code>OBJECT IDENTIFIER</code> (<code>0x06</code>) values, IPv4 addresses (<code>0x40</code>), <code>TimeTicks</code> (<code>0x43</code>), printable ASCII strings, and binary <code>OCTET STRING</code> blobs (rendered as clean hex when non-ASCII bytes are detected).</li>
+    </ul>
+
+    <h2>2. Hardware Verification &amp; Test Notes</h2>
+    <p>
+      Verified end-to-end against a <strong>Canon imageCLASS MF450 Series</strong> multifunction printer using the default
+      SNMPv3 username (<code>username</code>) across full private enterprise MIB walks (<code>1.3.6.1.4.1.1602</code>)
+      and standard MIB-2 trees (<code>1.3.6.1.2.1.1</code>):
+    </p>
+    <ul>
+      <li><strong>Algorithms &amp; Modes Verified:</strong> Tested with both <code>SHA1</code> and <code>SHA2-512</code> authentication, with encryption both enabled (<code>authPriv</code> AES-128) and disabled (<code>authNoPriv</code> via <code>-NoPriv</code>).</li>
+      <li><strong>Firmware Behavior:</strong> On current Canon MF450 firmware, an initial power-cycle is required when first enabling SNMPv3, after which subsequent changes to authentication algorithms, encryption settings, or passwords take effect immediately without additional reboots.</li>
+      <li><strong>UDP 161 USM vs. TCP 10161 TLS:</strong> Although Canon's web portal requires HTTPS/TLS on its Remote UI before enabling SNMPv3, the printer's SNMPv3 agent uses standard USM encryption over <strong>UDP port 161</strong> (not RFC 6353 SNMP-over-TLS on TCP port <code>10161</code>). Omit <code>-UseTls</code> for standard network printers.</li>
+    </ul>
+
+    <h2>3. Parameters</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Default</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>-TargetIP</code></td>
+          <td><code>[string]</code></td>
+          <td>Yes</td>
+          <td>—</td>
+          <td>IPv4 address or hostname of the target SNMPv3 agent.</td>
+        </tr>
+        <tr>
+          <td><code>-RootOID</code></td>
+          <td><code>[string]</code></td>
+          <td>Yes</td>
+          <td>—</td>
+          <td>Starting root OID of the subtree to walk (e.g., <code>1.3.6.1.2.1.1</code> or <code>1.3.6.1.2.1.43</code>).</td>
+        </tr>
+        <tr>
+          <td><code>-DefaultUsername</code></td>
+          <td><code>[string]</code></td>
+          <td>No</td>
+          <td><code>"username"</code></td>
+          <td>Default USM username used directly in <code>noAuthNoPriv</code> mode or pre-filled in the credential prompt.</td>
+        </tr>
+        <tr>
+          <td><code>-NonDefaultAuth</code></td>
+          <td><code>[switch]</code></td>
+          <td>No</td>
+          <td><code>$false</code></td>
+          <td>Opens the native Windows credential prompt (<code>Get-Credential</code>) to supply the username and password in memory without exposing credentials on the command line or disk.</td>
+        </tr>
+        <tr>
+          <td><code>-AuthProtocol</code></td>
+          <td><code>[string]</code></td>
+          <td>No</td>
+          <td><code>"SHA512"</code></td>
+          <td>USM HMAC authentication algorithm: <code>"MD5"</code>, <code>"SHA1"</code>, <code>"SHA256"</code>, <code>"SHA384"</code>, or <code>"SHA512"</code>.</td>
+        </tr>
+        <tr>
+          <td><code>-PrivProtocol</code></td>
+          <td><code>[string]</code></td>
+          <td>No</td>
+          <td><code>"AES"</code></td>
+          <td>USM privacy encryption algorithm when using <code>authPriv</code>: <code>"AES"</code> (AES-128-CFB128) or <code>"DES"</code> (DES-CBC).</td>
+        </tr>
+        <tr>
+          <td><code>-NoPriv</code></td>
+          <td><code>[switch]</code></td>
+          <td>No</td>
+          <td><code>$false</code></td>
+          <td>Uses <code>authNoPriv</code> (authentication without payload encryption) when <code>-NonDefaultAuth</code> is specified.</td>
+        </tr>
+        <tr>
+          <td><code>-UseTls</code></td>
+          <td><code>[switch]</code></td>
+          <td>No</td>
+          <td><code>$false</code></td>
+          <td>Wraps SNMPv3 packets in TLS over TCP (RFC 6353, default port <code>10161</code>), accepting self-signed certificates.</td>
+        </tr>
+        <tr>
+          <td><code>-Port</code></td>
+          <td><code>[int]</code></td>
+          <td>No</td>
+          <td><code>161</code> / <code>10161</code></td>
+          <td>Target port (defaults to <code>161</code> for UDP or <code>10161</code> when <code>-UseTls</code> is set).</td>
+        </tr>
+        <tr>
+          <td><code>-TimeoutMs</code></td>
+          <td><code>[int]</code></td>
+          <td>No</td>
+          <td><code>3000</code></td>
+          <td>Socket send/receive timeout in milliseconds per attempt (up to 3 UDP attempts per OID).</td>
+        </tr>
+        <tr>
+          <td><code>-MaxResults</code></td>
+          <td><code>[int]</code></td>
+          <td>No</td>
+          <td><code>10000</code></td>
+          <td>Safety ceiling on the maximum number of OIDs walked per invocation.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4. Command-Line Usage Examples</h2>
+
+    <h3>Load the Function Into Your Current Session</h3>
+    <pre><code>. C:\scripts\Invoke-SnmpV3Walk.ps1</code></pre>
+
+    <h3>1. Walk the Standard System MIB With Full Encryption (<code>SHA2-512</code> + <code>AES-128</code>)</h3>
+    <pre><code>Invoke-SnmpV3Walk -TargetIP "192.168.1.20" -RootOID "1.3.6.1.2.1.1" -NonDefaultAuth -AuthProtocol SHA512</code></pre>
+
+    <h3>2. Walk Using Authentication Only (<code>authNoPriv</code>: <code>SHA1</code>, Encryption Off)</h3>
+    <pre><code>Invoke-SnmpV3Walk -TargetIP "192.168.1.20" -RootOID "1.3.6.1.2.1.43" -NonDefaultAuth -NoPriv -AuthProtocol SHA1</code></pre>
+
+    <h3>3. Walk Using Default Username (<code>noAuthNoPriv</code>, No Password)</h3>
+    <pre><code>Invoke-SnmpV3Walk -TargetIP "192.168.1.20" -RootOID "1.3.6.1.2.1.1"</code></pre>
+
+    <h3>Sample Output</h3>
+    <pre><code>OID               Type Value
+---               ---- -----
+1.3.6.1.2.1.1.1.0 0x04 Canon MF450 Series /P
+1.3.6.1.2.1.1.2.0 0x06 1.3.6.1.4.1.1602.4.7
+1.3.6.1.2.1.1.3.0 0x43 01:59:08.3600000
+1.3.6.1.2.1.1.4.0 0x04 Administrator
+1.3.6.1.2.1.1.5.0 0x04 MF450 Series
+1.3.6.1.2.1.1.6.0 0x04
+1.3.6.1.2.1.1.7.0 0x02 72</code></pre>
+
+    <div class="callout warn">
+      <strong>Re-Sourcing &amp; Memory State Note</strong>
+      When modifying or testing <code>Invoke-SnmpV3Walk.ps1</code> repeatedly in an interactive PowerShell session, always re-dot-source the script (<code>. C:\scripts\Invoke-SnmpV3Walk.ps1</code>) to load the updated function definition and ensure any transient in-memory credential variables from prior runs are cleared.
+    </div>
+  </div>
+
+    <div style="font-size: 0.85em; color: #555; margin-top: 30px; border-top: 1px solid #ccc; padding-top: 10px;">
+        <strong>Author:</strong> Created by Ted Mittelstaedt, and the free AI's on the Internet on 11/15/2026, during the "Hour of the Wolf" for my own amusement, boasting rights, and to prove it could be done.<br><br>
+        
+        <strong>Copyright:</strong> &copy; 2026 Ted Mittelstaedt  
+        All rights reserved. This document and the associated script(s) is the intellectual property of Ted Mittelstaedt  
+        Unauthorized reproduction, distribution, or modification without prior written consent is prohibited, except as expressly permitted under the license terms below.<br><br>
+        
+        <strong>License:</strong> This work is licensed under the Berkeley Software Distribution (BSD) 3-Clause License:<br><br>
+        <pre style="white-space: pre-wrap; background-color: #f9f9f9; color: #1e293b; border: 1px solid #ccc; padding: 10px; font-size: 0.85em;">
+BSD 3-Clause License
+
+Copyright (c) 2026, Ted Mittelstaedt
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+    </pre>
+</div>
+
+</body>
+</html>
+
+
